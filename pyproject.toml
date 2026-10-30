@@ -1,0 +1,31 @@
+# Copyright (c) 2026 Aleix Seguí Ugalde. Affiliation: University of Oxford.
+# Contact: aleix.seguiugalde@eng.ox.ac.uk
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rieszlab"
+version = "0.4.0"
+description = "A Python toolkit for monogenic analysis of spatio-temporal signals"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Aleix Seguí Ugalde", email = "aleix.seguiugalde@eng.ox.ac.uk"}]
+dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+io = ["h5py>=3.8"]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rieszlab*"]
+
+[tool.setuptools.package-data]
+rieszlab = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
