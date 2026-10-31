@@ -80,7 +80,7 @@ class RieszResult:
 
         Does not repeat the Riesz transform or modify this result. Primary
         arrays are shared, not copied. None restores instantaneous estimates
-        with coherence=None; sampling, metric and preprocessing stay fixed.
+        with coherency=None; sampling, metric and preprocessing stay fixed.
         """
         return _analyse_monogenic(self.monogenic, tensor=tensor)
 
@@ -97,9 +97,9 @@ class RieszResult:
         )
 
     @property
-    def coherence(self) -> np.ndarray | None:
+    def coherency(self) -> np.ndarray | None:
         """Regularised directional coherency, or None when tensor=None."""
-        return None if self.tensor is None else self.tensor.coherence_regularized
+        return None if self.tensor is None else self.tensor.coherency_regularized
 
     @property
     def slowness_s_per_km(self) -> np.ndarray:
@@ -207,7 +207,7 @@ def orientation_to_slowness(orientation: ArrayLike, reference_velocity_mps: floa
 def _analyse_monogenic(mono: MonogenicResult, *, tensor: TensorConfig | None = None) -> RieszResult:
     """Derive direction, phase and slowness without repeating the Riesz FFT.
 
-    tensor=None uses instantaneous orientation and returns coherence=None.
+    tensor=None uses instantaneous orientation and returns coherency=None.
     Otherwise averaging is performed before cropping the padded coefficients.
     Directional phase uses the normal with nonnegative temporal component.
     """

@@ -38,7 +38,7 @@ def main():
         args.output / "attributes.npz",
         amplitude=result.amplitude,
         phase=result.phase_directional,
-        coherence=result.coherence,
+        coherency=result.coherency,
         slowness_s_per_m=result.slowness_s_per_m,
         enhanced=enhanced.data,
     )

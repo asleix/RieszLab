@@ -146,7 +146,7 @@ def plot_attributes(
     view, extent = _view(result, cfg, distance_start_m, time_start_s)
     m = result.monogenic
     u, a = m.even[view], m.amplitude[view]
-    chi = None if result.coherence is None else result.coherence[view]
+    chi = None if result.coherency is None else result.coherency[view]
     keep = result.valid[view] & (True if chi is None else chi >= cfg.coherency_min)
     fields = [
         (u, "Strain", cfg.strain_cmap, _strain_limits(u, cfg), units),
@@ -208,7 +208,7 @@ def plot_enhancement(
     figsize=(7, 4.5),
 ) -> Figure:
     """Original/coherency/enhanced maps, with shared strain limits."""
-    if result.coherence is None:
+    if result.coherency is None:
         raise ValueError("This figure requires tensor coherency")
     cfg = config or PlotConfig()
     plt, cmap, style = _mpl(cfg)
@@ -216,7 +216,7 @@ def plot_enhancement(
     limits = _strain_limits(result.monogenic.even[view], cfg)
     fields = [
         (result.monogenic.even, "Strain", cfg.strain_cmap, limits, units),
-        (result.coherence, "Directional coherency", cmap, (0, 1), r"$\mathcal{X}$"),
+        (result.coherency, "Directional coherency", cmap, (0, 1), r"$\mathcal{X}$"),
         (enhanced.data, "Coherent enhancement", cfg.strain_cmap, limits, units),
     ]
     with plt.rc_context(style):
@@ -279,7 +279,7 @@ def plot_association(
                 ylim=extent[2:],
             )
         p = tracks.slowness_s_per_m if summary is None else summary.per_cycle_s_per_m
-        chi = tracks.coherency if summary is None else summary.per_cycle_coherence
+        chi = tracks.coherency if summary is None else summary.per_cycle_coherency
         points = axes[2].scatter(
             np.broadcast_to(tracks.distance_m / KM, p.shape),
             p * KM,

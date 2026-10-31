@@ -23,13 +23,13 @@ class DirectionSelectionConfig:
 
     slowness_s_per_m: float
     angular_sigma_degrees: float = 10.0
-    coherence_power: float = 1.0
+    coherency_power: float = 1.0
 
     def __post_init__(self) -> None:
         if not np.isfinite(self.slowness_s_per_m):
             raise ValueError("slowness_s_per_m must be finite")
         positive(self.angular_sigma_degrees, "angular_sigma_degrees")
-        positive(self.coherence_power, "coherence_power")
+        positive(self.coherency_power, "coherency_power")
 
 
 @dataclass
@@ -86,7 +86,7 @@ def enhance_coherent(result: RieszResult, *, power: float = 1.0) -> EnhancementR
     positive(power, "power")
     if result._tensor_domain is None:
         raise ValueError("Coherent enhancement requires a tensor; supply tensor=...")
-    weight = result._tensor_domain.coherence_regularized**power
+    weight = result._tensor_domain.coherency_regularized**power
     return _synthesise(result.monogenic, weight)
 
 
@@ -118,7 +118,7 @@ def enhance_directional(
     angular = direction_weight(
         tensor.orientation, mono.config.reference_velocity_mps, selection=selection
     )
-    weight = tensor.coherence_regularized**selection.coherence_power * angular
+    weight = tensor.coherency_regularized**selection.coherency_power * angular
     enhanced = _synthesise(mono, weight)
     enhanced.direction_weight = angular[mono._domain.crop]
     enhanced.selection = selection

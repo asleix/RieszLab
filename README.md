@@ -35,13 +35,13 @@ result = monogenic(
 p = result.slowness_s_per_km
 ```
 
-The result provides `amplitude`, `phase_directional`, `orientation`, `coherence`
+The result provides `amplitude`, `phase_directional`, `orientation`, `coherency`
 and slowness in s/m or s/km. The input and Riesz components are in
 `result.monogenic`; tensor entries and eigenvalues are in `result.tensor`.
 
 We use an averaging tensor to obtain robust estimates and to compute the directional coherency.
 Omit the tensor, or pass `tensor=None`, for instantaneous attributes with
-`coherence=None`. Change the averaging with
+`coherency=None`. Change the averaging with
 `result.with_tensor(GaussianTensorConfig(60, 0.05, tau=0.01))`.
 This returns a new result sharing the original Riesz components, without
 repeating the transform. `result.with_tensor(None)` removes the averaging.
@@ -142,8 +142,8 @@ The listed bad channels apply only to this October recording: they are interpola
 before analysis and excluded from associations.
 
 Association follows phase crossings using orientation and ranks cycles by
-waveform power. `--cycles`, `--nonconsecutive` and `--min-cycles` control selection;
-association and summary coherency gates are separate. Run each script with
+waveform power. `--cycles`, `--nonconsecutive` and `--min-cycles` control selection.
+ Run each script with
 `--help` for its processing and display options.
 
 Direction fitting needs a geometry file with one header and columns
@@ -164,6 +164,7 @@ Additional tools cover Ricker bands and geometry-adaptive averaging.
 Function docstrings describe their parameters and assumptions.
 
 Our method is descibed in paper [paper].
+Data files are available at [link]. Cable locations are not available. 
 
 The tensor formulation is inspired from: Unser, Sage & Van De Ville (2009), *Multiresolution monogenic
 signal analysis using the Riesz–Laplace wavelet transform*, IEEE TIP 18, 2402–2418.

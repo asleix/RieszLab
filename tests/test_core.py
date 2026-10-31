@@ -35,7 +35,7 @@ def test_default_double_precision_and_single_precision_opt_in(dtype):
     m = result.monogenic
     arrays = (m.even, m.riesz_space, m.riesz_time, result.amplitude,
               result.phase_directional, result.slowness_s_per_m,
-              result.tensor.j_ss, result.coherence, enhance_coherent(result).data)
+              result.tensor.j_ss, result.coherency, enhance_coherent(result).data)
     assert RieszConfig().dtype == "float64"
     assert m.config.dtype == expected.name
     assert all(a.dtype == expected for a in arrays)
@@ -58,7 +58,7 @@ def test_plane_wave_sign_amplitude_and_metric(metric, spatial_mode):
     assert_allclose(result.amplitude, 2, atol=3e-14)
     assert_allclose(result.slowness_s_per_m, -k / f, atol=3e-17)
     assert_allclose(result.slowness_s_per_km, -1000 * k / f, atol=3e-14)
-    assert_allclose(result.coherence, 1, atol=5e-15)
+    assert_allclose(result.coherency, 1, atol=5e-15)
     assert_allclose(result.velocity_mps(), -f / k, rtol=2e-13)
     m = result.monogenic
     radius = np.hypot(k, f / metric)
@@ -82,7 +82,7 @@ def test_tensor_matches_independent_eigendecomposition():
     assert_allclose(abs(np.sum(normal * eigenvectors[..., :, 1], axis=-1)), 1, atol=1e-14)
     isotropic = np.linalg.eigvalsh(j + 0.35 * np.eye(2))
     expected = np.diff(isotropic, axis=-1)[..., 0] / isotropic.sum(axis=-1)
-    assert_allclose(out.coherence_regularized, expected, atol=1e-15)
+    assert_allclose(out.coherency_regularized, expected, atol=1e-15)
 
 
 def test_exact_variable_gaussian_and_constant_profile():
@@ -106,12 +106,12 @@ def test_tau_scales_with_amplitude_squared_and_zero_data():
     original = monogenic(x, 10, 0.01, config=config, tensor=tensor)
     scaled = monogenic(4 * x, 10, 0.01, config=config, tensor=replace(tensor, tau=16 * tensor.tau))
     assert_allclose(scaled.amplitude, 4 * original.amplitude)
-    assert_allclose(scaled.coherence, original.coherence)
+    assert_allclose(scaled.coherency, original.coherency)
     assert_allclose(scaled.slowness_s_per_m, original.slowness_s_per_m)
     zero = monogenic(np.zeros((8, 21)), 10, 0.01, config=config, tensor=tensor)
     assert not zero.valid.any()
-    assert_allclose(zero.coherence, 0)
-    assert_allclose(zero.tensor.coherence, 0)
+    assert_allclose(zero.coherency, 0)
+    assert_allclose(zero.tensor.coherency, 0)
     assert np.isnan(zero.phase_directional).all()
 
 
@@ -129,7 +129,7 @@ def test_enhancement_unity_and_constant_weights(shape, pad_mode):
     for weight in (0.0, 0.4, 1.0):
         reconstructed = reconstruct(result.monogenic, weights=weight)
         assert_allclose(reconstructed.data, weight * x, atol=4e-15)
-    assert_allclose(enhance_coherent(result).weights, result.coherence)
+    assert_allclose(enhance_coherent(result).weights, result.coherency)
 
 
 def test_custom_weights_match_explicit_least_squares():
@@ -172,7 +172,7 @@ def test_estimates_are_unmasked_and_inputs_are_unchanged():
     x = np.random.default_rng(2).normal(size=(12, 32)).astype(np.float32)
     before = x.copy()
     result = monogenic(x, 10, 0.01, tensor=GaussianTensorConfig())
-    assert np.any(result.valid & (result.coherence < 0.7))
+    assert np.any(result.valid & (result.coherency < 0.7))
     assert np.isfinite(result.slowness_s_per_m[result.valid]).all()
     assert_allclose(x, before)
     with pytest.raises(ValueError):

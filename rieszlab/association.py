@@ -86,7 +86,7 @@ class SlownessSummary:
     upper_s_per_m: np.ndarray
     count: np.ndarray
     quantiles: tuple[float, float]
-    per_cycle_coherence: np.ndarray
+    per_cycle_coherency: np.ndarray
     per_cycle_sample_count: np.ndarray
     min_cycles: int
 
@@ -109,7 +109,7 @@ def phase_candidates(
     """
     if not np.isfinite([distance_start_m, time_start_s, target_phase_rad]).all():
         raise ValueError("Coordinates and target phase must be finite")
-    if result.coherence is None:
+    if result.coherency is None:
         raise ValueError("Cycle association requires tensor coherency; supply tensor=...")
     mono = result.monogenic
     time = time_start_s + np.arange(mono.even.shape[1]) * mono.dt_s
@@ -150,7 +150,7 @@ def phase_candidates(
                 period,
                 interp(result.slowness_s_per_m[i]),
                 angle,
-                interp(result.coherence[i]),
+                interp(result.coherency[i]),
                 interp(result.amplitude[i]),
             )
         )
@@ -360,7 +360,7 @@ def summarize_tracks(
         raise ValueError("Invalid phase neighbourhood or coherency threshold")
     if len(quantiles) != 2 or not 0 <= quantiles[0] < quantiles[1] <= 1:
         raise ValueError("quantiles must be an ordered pair in [0,1]")
-    if result.coherence is None:
+    if result.coherency is None:
         raise ValueError("Cycle summaries require tensor coherency; supply tensor=...")
     if not isinstance(min_cycles, (int, np.integer)) or min_cycles < 1:
         raise ValueError("min_cycles must be a positive integer")
@@ -371,12 +371,12 @@ def summarize_tracks(
     for j, i in zip(*np.where(np.isfinite(tracks.time_s))):
         use = (
             (abs(t - tracks.time_s[j, i]) <= half_period_fraction * tracks.period_s[j, i])
-            & (result.coherence[i] >= coherency_min)
+            & (result.coherency[i] >= coherency_min)
             & result.valid[i]
         )
         if use.any():
             values[j, i] = np.median(result.slowness_s_per_m[i, use])
-            coherencies[j, i] = np.median(result.coherence[i, use])
+            coherencies[j, i] = np.median(result.coherency[i, use])
             sample_counts[j, i] = use.sum()
     for i in range(values.shape[1]):
         roots = tracks.candidate_index[:, i]

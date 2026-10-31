@@ -47,7 +47,7 @@ def plane(tensor=None):
 
 def test_optional_tensor_and_explicit_sampling():
     result = plane()
-    assert result.tensor is None and result.coherence is None
+    assert result.tensor is None and result.coherency is None
     assert result.monogenic.config.reference_velocity_mps == 1000
     assert_allclose(result.amplitude, 1, atol=2e-14)
     assert_allclose(result.slowness_s_per_m, (2 / 480) / 5, atol=1e-15)
@@ -76,10 +76,10 @@ def test_tensor_reuses_monogenic_coefficients():
     original = plane()
     result = original.with_tensor(GaussianTensorConfig(20, 0.04, tau=0.01))
     assert result.monogenic is original.monogenic
-    assert result.coherence is not None
+    assert result.coherency is not None
     assert_allclose(result.slowness_s_per_m, original.slowness_s_per_m, atol=1e-15)
     instant = result.with_tensor(None)
-    assert instant.coherence is None and instant.monogenic is result.monogenic
+    assert instant.coherency is None and instant.monogenic is result.monogenic
 
 
 @pytest.mark.parametrize(
@@ -100,7 +100,7 @@ def test_with_tensor_matches_fresh_analysis_without_recomputing(monkeypatch, ten
     snapshots = [
         a.copy() for a in (
             original.orientation, original.slowness_s_per_m,
-            original.phase_directional, original.coherence,
+            original.phase_directional, original.coherency,
         )
     ]
 
@@ -116,15 +116,15 @@ def test_with_tensor_matches_fresh_analysis_without_recomputing(monkeypatch, ten
     for before, after in zip(
         snapshots,
         (original.orientation, original.slowness_s_per_m,
-         original.phase_directional, original.coherence),
+         original.phase_directional, original.coherency),
     ):
         assert_allclose(after, before, rtol=0, atol=0)
     for name in ("amplitude", "orientation", "slowness_s_per_m", "phase_directional", "valid"):
         assert_allclose(getattr(actual, name), getattr(expected, name), rtol=0, atol=0)
     if tensor is None:
-        assert actual.coherence is None and actual.tensor is None
+        assert actual.coherency is None and actual.tensor is None
     else:
-        assert_allclose(actual.coherence, expected.coherence, rtol=0, atol=0)
+        assert_allclose(actual.coherency, expected.coherency, rtol=0, atol=0)
 
 
 def test_single_public_entry_point():
@@ -163,7 +163,7 @@ def test_direction_selection_plane_wave_and_axial_symmetry():
     opposite = enhance_directional(result, selection=replace(selection, slowness_s_per_m=-p))
     assert_allclose(matching.data, result.monogenic.even, atol=1e-14)
     assert np.max(np.abs(opposite.data)) < 1e-8
-    assert_allclose(matching.weights, result.coherence, atol=1e-14)
+    assert_allclose(matching.weights, result.coherency, atol=1e-14)
 
 
 def test_cycle_selection_minimum_and_nonconsecutive():

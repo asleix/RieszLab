@@ -127,8 +127,8 @@ class TensorResult:
     lambda_max: np.ndarray
     lambda_min: np.ndarray
     orientation: np.ndarray
-    coherence: np.ndarray
-    coherence_regularized: np.ndarray
+    coherency: np.ndarray
+    coherency_regularized: np.ndarray
     config: TensorConfig
 
 
