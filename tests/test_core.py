@@ -129,9 +129,43 @@ def test_enhancement_unity_and_constant_weights(shape, pad_mode):
     for weight in (0.0, 0.4, 1.0):
         reconstructed = reconstruct(result.monogenic, weights=weight)
         assert_allclose(reconstructed.data, weight * x, atol=4e-15)
-    multiplication = enhance_coherent(result, method="multiply")
-    assert_allclose(multiplication.data, result.coherence * x)
-    assert not np.allclose(enhance_coherent(result).data, multiplication.data)
+    assert_allclose(enhance_coherent(result).weights, result.coherence)
+
+
+def test_custom_weights_match_explicit_least_squares():
+    shape = (5, 6)
+    config = RieszConfig(pad_samples=(0, 0))
+    x = np.random.default_rng(20).normal(size=shape)
+    result = monogenic(x, 10, 0.01, config=config)
+    weights = np.linspace(0, 1, x.size).reshape(shape)
+
+    # Build the analysis matrix independently of the FFT synthesis.
+    columns = []
+    for impulse in np.eye(x.size):
+        mono = monogenic(impulse.reshape(shape), 10, 0.01, config=config).monogenic
+        columns.append(np.concatenate([
+            mono.even.ravel(), mono.riesz_space.ravel(), mono.riesz_time.ravel(),
+        ]))
+    analysis = np.column_stack(columns)
+    target = np.tile(weights.ravel(), 3) * (analysis @ x.ravel())
+    expected = np.linalg.lstsq(analysis, target, rcond=None)[0].reshape(shape)
+    enhanced = reconstruct(result.monogenic, weights=weights)
+    assert_allclose(enhanced.data, expected, atol=5e-15)
+    assert_allclose(enhanced.weights, weights)
+    assert_allclose(result.monogenic.even, x)
+
+
+def test_custom_weights_broadcast_and_validation():
+    x = np.random.default_rng(21).normal(size=(7, 13))
+    result = monogenic(x, 10, 0.01, config=RieszConfig(pad_samples=(3, 4)))
+    weights = np.linspace(0, 1, x.shape[0])[:, None]
+    full = np.broadcast_to(weights, x.shape)
+    enhanced = reconstruct(result.monogenic, weights=weights)
+    assert_allclose(enhanced.data, reconstruct(result.monogenic, full).data)
+    assert_allclose(enhanced.weights, full)
+    for invalid in (-0.1, 1.1, np.nan, np.inf, np.ones((2, 3))):
+        with pytest.raises(ValueError):
+            reconstruct(result.monogenic, weights=invalid)
 
 
 def test_estimates_are_unmasked_and_inputs_are_unchanged():

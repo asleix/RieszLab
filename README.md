@@ -99,17 +99,24 @@ selected = enhance_directional(steered, selection=DirectionSelectionConfig(
 Steering rotates the averaging window, and direction selection weights the agreement
 with a prescribed orientation.
 The signal enhancement procedure weights all three monogenic components and reconstructs the scalar
-field in the least-squares sense. Use `method="multiply"` for direct strain
-weighting, or `reconstruct(result.monogenic, weights)` for custom weights in [0,1].
+field in the least-squares sense. To use your own `weights` in [0,1], on the
+same (channel, time) grid:
+
+```python
+from rieszlab import reconstruct
+enhanced = reconstruct(result.monogenic, weights=weights)
+```
+
+The reconstructed field is `enhanced.data`; `enhanced.weights` records the weights.
+A scalar or broadcastable array is also accepted, and no tensor is required.
 
 ![Broadband Alboran strain, opposite-direction selections and their colour overlay.](figures/direction_selective_enhancement.png)
 
 The ±0.5 s/km values prescribe the centre of the selections and are not fitted estimates.
 Coloured panels show the positive lobes of the oscillations.
 
-Use enhancement for visualisation or downstream analysis. Reapplying Riesz to
-enhanced data is not independent validation, and opposite selections are not
-complementary physical modes. Estimate slowness on the input field.
+Use enhancement for visualisation or downstream analysis. 
+Estimate slowness on the input field.
 
 ## Examples
 

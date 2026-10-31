@@ -163,10 +163,7 @@ def test_direction_selection_plane_wave_and_axial_symmetry():
     opposite = enhance_directional(result, selection=replace(selection, slowness_s_per_m=-p))
     assert_allclose(matching.data, result.monogenic.even, atol=1e-14)
     assert np.max(np.abs(opposite.data)) < 1e-8
-    assert_allclose(
-        enhance_directional(result, selection=selection, method="multiply").data,
-        matching.weights * result.monogenic.even,
-    )
+    assert_allclose(matching.weights, result.coherence, atol=1e-14)
 
 
 def test_cycle_selection_minimum_and_nonconsecutive():

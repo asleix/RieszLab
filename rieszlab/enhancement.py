@@ -8,7 +8,6 @@ Enhanced strain is for display or downstream use, not independent Riesz validati
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -16,8 +15,6 @@ from scipy import fft
 
 from ._validation import positive
 from .riesz import MonogenicResult, RieszResult, _symbols
-
-ReconstructionMethod = Literal["riesz", "multiply"]
 
 
 @dataclass(frozen=True)
@@ -39,20 +36,13 @@ class DirectionSelectionConfig:
 class EnhancementResult:
     data: np.ndarray
     weights: np.ndarray
-    method: ReconstructionMethod
     direction_weight: np.ndarray | None = None
     selection: DirectionSelectionConfig | None = None
 
 
-def _synthesise(
-    mono: MonogenicResult, weight: np.ndarray, method: ReconstructionMethod
-) -> EnhancementResult:
-    if method not in ("riesz", "multiply"):
-        raise ValueError("method must be riesz or multiply")
+def _synthesise(mono: MonogenicResult, weight: np.ndarray) -> EnhancementResult:
     domain = mono._domain
     crop = domain.crop
-    if method == "multiply":
-        return EnhancementResult(weight[crop] * mono.even, weight[crop], method)
     ms, mt = _symbols(
         domain.even.shape,
         mono.dx_m,
@@ -65,18 +55,17 @@ def _synthesise(
         total += 1j * symbol * fft.rfft2(weight * component, workers=1)
     total /= 1 + ms**2 + mt**2
     data = fft.irfft2(total, s=domain.even.shape, workers=1)[crop].copy()
-    return EnhancementResult(data, weight[crop], method)
+    return EnhancementResult(data, weight[crop])
 
 
-def reconstruct(
-    mono: MonogenicResult, weights: ArrayLike, *, method: ReconstructionMethod = "riesz"
-) -> EnhancementResult:
+def reconstruct(mono: MonogenicResult, weights: ArrayLike) -> EnhancementResult:
     """Weight all three components and reconstruct their least-squares scalar field.
 
     Uses the cached padded coefficients and canonical inverse, including DC
-    and Nyquist bins. Weights in [0,1] are on the input grid and extended at
-    the boundary. Constant weights reproduce scalar multiplication exactly.
-    method='multiply' is the direct strain-weighting control, not an inverse.
+    and Nyquist bins. Weights must be finite, in [0,1], and broadcastable to
+    the input grid; they are extended at the boundary using the padding mode
+    (edge extension for zero-padded data). Constant weights scale the input
+    exactly. Returns the enhanced field in .data and applied weights in .weights.
     """
     g = np.asarray(weights, dtype=mono.even.dtype)
     g = np.broadcast_to(g, mono.even.shape)
@@ -84,12 +73,10 @@ def reconstruct(
         raise ValueError("weights must be finite, in [0,1], and broadcast to the data")
     ps, pt = mono.config.pad_samples
     mode = "edge" if mono.config.pad_mode == "constant" else mono.config.pad_mode
-    return _synthesise(mono, np.pad(g, ((ps, ps), (pt, pt)), mode=mode), method)
+    return _synthesise(mono, np.pad(g, ((ps, ps), (pt, pt)), mode=mode))
 
 
-def enhance_coherent(
-    result: RieszResult, *, method: ReconstructionMethod = "riesz", power: float = 1.0
-) -> EnhancementResult:
+def enhance_coherent(result: RieszResult, *, power: float = 1.0) -> EnhancementResult:
     """Continuous g=X**power enhancement, without a gate or gain normalisation.
 
     Coherency is evaluated on the padded analysis domain before reconstruction.
@@ -100,7 +87,7 @@ def enhance_coherent(
     if result._tensor_domain is None:
         raise ValueError("Coherent enhancement requires a tensor; supply tensor=...")
     weight = result._tensor_domain.coherence_regularized**power
-    return _synthesise(result.monogenic, weight, method)
+    return _synthesise(result.monogenic, weight)
 
 
 def direction_weight(
@@ -119,7 +106,6 @@ def enhance_directional(
     result: RieszResult,
     *,
     selection: DirectionSelectionConfig,
-    method: ReconstructionMethod = "riesz",
 ) -> EnhancementResult:
     """Reconstruct with g=X**power times soft agreement with a selected direction.
 
@@ -133,7 +119,7 @@ def enhance_directional(
         tensor.orientation, mono.config.reference_velocity_mps, selection=selection
     )
     weight = tensor.coherence_regularized**selection.coherence_power * angular
-    enhanced = _synthesise(mono, weight, method)
+    enhanced = _synthesise(mono, weight)
     enhanced.direction_weight = angular[mono._domain.crop]
     enhanced.selection = selection
     return enhanced

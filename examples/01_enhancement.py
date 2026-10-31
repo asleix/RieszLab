@@ -12,11 +12,10 @@ from _alboran import analyse, load, parser, plot_config, save
 def main() -> None:
     p = parser(__doc__)
     p.add_argument("--power", type=float, default=1.0)
-    p.add_argument("--method", choices=("riesz", "multiply"), default="riesz")
     args = p.parse_args()
     record = load(args)
     result = analyse(record, args)
-    enhanced = enhance_coherent(result, power=args.power, method=args.method)
+    enhanced = enhance_coherent(result, power=args.power)
     # Estimates remain those of the input, not the enhanced field.
     fig = plot_enhancement(
         result,
