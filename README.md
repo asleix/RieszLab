@@ -1,16 +1,15 @@
-# RieszLab
+# RieszLab: A Python toolkit for monogenic analysis of spatio-temporal signals
 
-A Python toolkit for monogenic analysis of spatio-temporal signals.
-
-RieszLab describes wavefields through amplitude, phase, orientation and
-directional coherency. These complementary views support signal enhancement,
-tracking and propagation analysis. The examples use DAS recordings, and the
-calculations are written to be easy to inspect and adapt.
+RieszLab implements methods for describing wavefields through their monogenic amplitude, phase, orientation and
+directional coherency. These complementary attributes have applications that include signal identification and enhancement, also supporting
+tracking and propagation analysis. The examples use distributed acoustic sensing (DAS) recordings.
 
 ![Synthetic wave packet: field, monogenic amplitude, directional phase and apparent slowness.](figures/das_monogenic_attributes_row.png)
 
-Amplitude follows the packet, phase resolves its oscillations, and orientation
+The monogenic amplitude follows the packet, the phase resolves its oscillations, and the orientation
 gives the apparent slowness along the cable.
+
+For detailed explanation on the quantities and calculations, read [paper]. 
 
 Copyright 2026 Aleix Seguí Ugalde, University of Oxford.\
 Contact: aleix.seguiugalde@eng.ox.ac.uk
@@ -40,6 +39,7 @@ The result provides `amplitude`, `phase_directional`, `orientation`, `coherence`
 and slowness in s/m or s/km. The input and Riesz components are in
 `result.monogenic`; tensor entries and eigenvalues are in `result.tensor`.
 
+We use an averaging tensor to obtain robust estimates and to compute the directional coherency.
 Omit the tensor, or pass `tensor=None`, for instantaneous attributes with
 `coherence=None`. Change the averaging with
 `result.with_tensor(GaussianTensorConfig(60, 0.05, tau=0.01))`.
@@ -49,8 +49,8 @@ repeating the transform. `result.with_tensor(None)` removes the averaging.
 ## Main parameters
 
 Both `dx_m` and `dt_s` are required. Their ratio defines the default space–time
-metric: 10 m and 0.01 s give 1000 m/s. `reference_velocity_mps` can override
-this metric; it is a coordinate scale, not an assumed propagation velocity.
+metric that gives units to the computed slowness. For example, 10 m and 0.01 s give 1000 m/s. 
+`reference_velocity_mps` can override this metric. Notice that this is a coordinate scale, not an assumed propagation velocity.
 
 | Configuration | Main choices |
 | --- | --- |
@@ -60,11 +60,7 @@ this metric; it is a coordinate scale, not an assumed propagation velocity.
 | `DirectionSelectionConfig` | Selected slowness, angular standard deviation in degrees, and coherency exponent. |
 
 Both tensor configurations share `tau` (default 0) and `truncate` (default 4
-standard deviations). The tensor averages Riesz-vector products, so squared
-amplitude already weights the directions. Its regularised coherency is
-$(\lambda_{\max}-\lambda_{\min})/(\lambda_{\max}+\lambda_{\min}+\tau)$.
-`tau` has squared signal-amplitude units and suppresses low-energy coherency
-without changing unmasked slowness. Scale it by $a^2$ if amplitudes are scaled by $a$.
+standard deviations). `tau` provides a regularised coherency (see section 2.3 in the paper), and has squared signal-amplitude units and suppresses low-energy coherency.
 
 <img src="figures/das_crossing_coherency.png" width="560" alt="Crossing synthetic packets, directional coherency, and coherency-gated apparent slowness.">
 
@@ -72,9 +68,8 @@ Coherency is high along isolated arrivals and decreases where competing
 directions overlap. Here, slowness is displayed where coherency is at least 0.5.
 
 Orientation is axial, in radians from the spatial axis of `(s,c*t)`.
-Apparent slowness is $-\cos\theta/(c\sin\theta)$, positive for later arrivals
-at greater distance. Directional phase uses the normal with nonnegative
-temporal component.
+Apparent slowness is computed as $-\cos\theta/(c\sin\theta)$, positive for later arrivals
+at greater distance. The directional is computed along the normal defined by this orientation.
 
 Loading and analysis default to double precision. For lower memory use, choose
 `read_hdf5(..., dtype="float32")` and `RieszConfig(dtype="float32")`.
@@ -101,17 +96,16 @@ selected = enhance_directional(steered, selection=DirectionSelectionConfig(
 ))
 ```
 
-Steering rotates the averaging window. Direction selection weights agreement
-with a prescribed orientation; it can also be used with an ordinary tensor.
-Enhancement weights all three monogenic components and reconstructs the scalar
+Steering rotates the averaging window, and direction selection weights the agreement
+with a prescribed orientation.
+The signal enhancement procedure weights all three monogenic components and reconstructs the scalar
 field in the least-squares sense. Use `method="multiply"` for direct strain
 weighting, or `reconstruct(result.monogenic, weights)` for custom weights in [0,1].
 
 ![Broadband Alboran strain, opposite-direction selections and their colour overlay.](figures/direction_selective_enhancement.png)
 
-The ±0.5 s/km values prescribe the selections; they are not fitted estimates.
-No spatial wavelet is used. Coloured panels show positive lobes on a square-root
-display scale; the reconstructed fields retain both polarities.
+The ±0.5 s/km values prescribe the centre of the selections and are not fitted estimates.
+Coloured panels show the positive lobes of the oscillations.
 
 Use enhancement for visualisation or downstream analysis. Reapplying Riesz to
 enhanced data is not independent validation, and opposite selections are not
@@ -138,7 +132,7 @@ They process the full loaded record before display cropping, which can require
 several GB. Sampling comes from HDF5 metadata or `--dx-m`/`--dt-s`; times are
 record-relative unless `--origin-utc` is supplied. Alboran amplitudes are nanostrain.
 The listed bad channels apply only to this October recording: they are interpolated
-before analysis and excluded from associations. No channel normalisation is applied.
+before analysis and excluded from associations.
 
 Association follows phase crossings using orientation and ranks cycles by
 waveform power. `--cycles`, `--nonconsecutive` and `--min-cycles` control selection;
@@ -159,13 +153,10 @@ python examples/adaptive_packets.py
 python -m pytest -q
 ```
 
-Additional tools cover Ricker bands, geometry-adaptive averaging and reusable
-plots. Function docstrings describe their parameters and assumptions.
+Additional tools cover Ricker bands and geometry-adaptive averaging. 
+Function docstrings describe their parameters and assumptions.
 
-Coherency measures directional agreement, not independent signal detection:
-nonlocal tails can also be coherent. Adaptive averaging limits neighbourhood
-mixing, not the transform's full footprint. Quantiles describe observed spread,
-not confidence intervals.
+Our method is descibed in paper [paper].
 
-Tensor formulation: Unser, Sage & Van De Ville (2009), *Multiresolution monogenic
+The tensor formulation is inspired from: Unser, Sage & Van De Ville (2009), *Multiresolution monogenic
 signal analysis using the Riesz–Laplace wavelet transform*, IEEE TIP 18, 2402–2418.
