@@ -20,7 +20,7 @@ Install from this folder with `python -m pip install -e .`.
 NumPy and SciPy are required; `python -m pip install -e '.[plot,io,test]'`
 adds optional plotting, HDF5 and tests.
 
-Inputs are finite real **(channel, time)** arrays with uniform sampling.
+Inputs are finite real **(channel, time)** arrays with equispaced sampling.
 
 ```python
 from rieszlab import GaussianTensorConfig, monogenic
@@ -76,7 +76,7 @@ Loading and analysis default to double precision. For lower memory use, choose
 
 ## Enhancement and direction selection
 
-![Alboran T-wave strain, directional coherency, continuous reconstruction and apparent slowness.](figures/vertical_denoising_and_slowness.png)
+![Alboran T-wave strain, directional coherency, Riesz enhancement and apparent slowness.](figures/vertical_denoising_and_slowness.png)
 
 Continuous coherency weighting enhances the T-wave trains. Input and enhanced
 strain share the same scale; slowness comes from the input, with coherency ≥0.3.
@@ -124,6 +124,10 @@ The four Alboran examples demonstrate enhancement, cycle association, direction
 fitting and direction selection. They illustrate the workflows rather than
 reproduce the paper figures exactly.
 
+Each example calls `monogenic(...)` directly, with sampling and configuration
+visible in the script. Association and fitting steps are explicit too;
+`alboran_io.py` shares only command-line, data-preparation and file-output helpers.
+
 ```bash
 export MPLBACKEND=Agg
 alboran_file=/path/to/7M_S_20231005-090045.h5
@@ -166,5 +170,9 @@ Function docstrings describe their parameters and assumptions.
 Our method is descibed in paper [paper].
 Data files are available at [link]. Cable locations are not available. 
 
+In collaboration with the Institute of Marine Sciences (CSIC), ETH Zurich and AP Sensing GmbH.
+
 The tensor formulation is inspired from: Unser, Sage & Van De Ville (2009), *Multiresolution monogenic
 signal analysis using the Riesz–Laplace wavelet transform*, IEEE TIP 18, 2402–2418.
+
+Implementation was assisted by GPT-6.
