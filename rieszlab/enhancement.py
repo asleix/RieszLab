@@ -2,7 +2,7 @@
 
 Copyright (c) 2026 Aleix Seguí Ugalde. University of Oxford.
 Contact: aleix.seguiugalde@eng.ox.ac.uk
-Enhanced strain is for display or downstream use, not independent Riesz validation.
+Enhanced strain is for display or downstream use, not for re-computing monogenic components.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from numpy.typing import ArrayLike
 from scipy import fft
 
 from ._validation import positive
-from .riesz import MonogenicResult, RieszResult, _symbols
+from .riesz import MonogenicResult, RieszResult, _riesz_multipliers
 
 
 @dataclass(frozen=True)
@@ -41,19 +41,26 @@ class EnhancementResult:
 
 
 def _synthesise(mono: MonogenicResult, weight: np.ndarray) -> EnhancementResult:
+    """Solve the component-matching least-squares problem on the padded FFT grid."""
+    # 1. Reuse the analysis domain and its exact discrete Fourier multipliers.
     domain = mono._domain
     crop = domain.crop
-    ms, mt = _symbols(
+    ms, mt = _riesz_multipliers(
         domain.even.shape,
         mono.dx_m,
         mono.dt_s,
         mono.config.reference_velocity_mps,
         domain.even.dtype,
     )
+
+    # 2. Apply the monogenic adjoint to the weighted components; conjugation gives +1j.
     total = fft.rfft2(weight * domain.even, workers=1)
-    for component, symbol in ((domain.riesz_space, ms), (domain.riesz_time, mt)):
-        total += 1j * symbol * fft.rfft2(weight * component, workers=1)
+    for component, multiplier in ((domain.riesz_space, ms), (domain.riesz_time, mt)):
+        total += 1j * multiplier * fft.rfft2(weight * component, workers=1)
+
+    # 3. Solve the normal equation per frequency, including DC and Nyquist corrections.
     total /= 1 + ms**2 + mt**2
+    # Invert on the full domain before cropping back to the recorded samples.
     data = fft.irfft2(total, s=domain.even.shape, workers=1)[crop].copy()
     return EnhancementResult(data, weight[crop])
 
@@ -91,7 +98,10 @@ def enhance_coherent(result: RieszResult, *, power: float = 1.0) -> EnhancementR
 
 
 def direction_weight(
-    orientation: ArrayLike, reference_velocity_mps: float, *, selection: DirectionSelectionConfig
+    orientation: ArrayLike,
+    reference_velocity_mps: float,
+    *,
+    selection: DirectionSelectionConfig,
 ) -> np.ndarray:
     """Gaussian agreement with a prescribed normal; undefined directions get zero."""
     positive(reference_velocity_mps, "reference_velocity_mps")
@@ -113,7 +123,9 @@ def enhance_directional(
     outputs are conditional selections, not complementary physical modes.
     """
     if result._tensor_domain is None:
-        raise ValueError("Direction-selective enhancement requires a tensor; supply tensor=...")
+        raise ValueError(
+            "Direction-selective enhancement requires a tensor; supply tensor=..."
+        )
     mono, tensor = result.monogenic, result._tensor_domain
     angular = direction_weight(
         tensor.orientation, mono.config.reference_velocity_mps, selection=selection

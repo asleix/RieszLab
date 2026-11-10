@@ -3,7 +3,6 @@
 Copyright (c) 2026 Aleix Seguí Ugalde.
 Affiliation: University of Oxford.
 Contact: aleix.seguiugalde@eng.ox.ac.uk
-These are ridge associations, not onset picks or guaranteed seismic phase IDs.
 """
 
 from __future__ import annotations
@@ -32,7 +31,9 @@ class AssociationConfig:
         _positive(self.amplitude_min, "amplitude_min", allow_zero=True)
         _positive(self.max_gap_m, "max_gap_m", allow_zero=True)
         if not 0 < self.max_period_fraction < 0.5:
-            raise ValueError("max_period_fraction must be in (0,0.5) to limit cycle jumps")
+            raise ValueError(
+                "max_period_fraction must be in (0,0.5) to limit cycle jumps"
+            )
         if not 0 <= self.max_orientation_change_degrees <= 90:
             raise ValueError("max_orientation_change_degrees must lie in [0,90]")
 
@@ -110,19 +111,28 @@ def phase_candidates(
     if not np.isfinite([distance_start_m, time_start_s, target_phase_rad]).all():
         raise ValueError("Coordinates and target phase must be finite")
     if result.coherency is None:
-        raise ValueError("Cycle association requires tensor coherency; supply tensor=...")
+        raise ValueError(
+            "Cycle association requires tensor coherency; supply tensor=..."
+        )
     mono = result.monogenic
     time = time_start_s + np.arange(mono.even.shape[1]) * mono.dt_s
     distance = distance_start_m + np.arange(mono.even.shape[0]) * mono.dx_m
-    measured = np.ones(len(distance), bool) if channel_mask is None else np.asarray(channel_mask)
+    measured = (
+        np.ones(len(distance), bool)
+        if channel_mask is None
+        else np.asarray(channel_mask)
+    )
     if measured.shape != (len(distance),) or measured.dtype != bool:
         raise ValueError("channel_mask must be Boolean with one entry per channel")
     channels = []
     for i in range(len(distance)):
+        # 1. Project the Riesz vector onto the tensor normal and rotate by the target phase.
         u, theta = mono.even[i], result.orientation[i]
         q = np.cos(theta) * mono.riesz_space[i] + np.sin(theta) * mono.riesz_time[i]
         a = u * np.cos(target_phase_rad) + q * np.sin(target_phase_rad)
         b = q * np.cos(target_phase_rad) - u * np.sin(target_phase_rad)
+
+        # 2. Interpolate positive-going crossings; a > 0 excludes the opposite half-cycle.
         ids = np.flatnonzero((b[:-1] <= 0) & (b[1:] > 0))
         if not measured[i]:
             ids = ids[:0]
@@ -133,6 +143,7 @@ def phase_candidates(
         def interp(values: np.ndarray) -> np.ndarray:
             return values[ids] * (1 - alpha) + values[ids + 1] * alpha
 
+        # 3. Estimate periods from neighbouring crossings, before any coherency gate.
         times = interp(time)
         delta = np.diff(times)
         period = (
@@ -140,8 +151,11 @@ def phase_candidates(
             if len(delta)
             else np.full(len(times), np.nan)
         )
+
+        # 4. Interpolate attributes at each root; doubled angles respect axial periodicity.
         angle = np.mod(
-            0.5 * np.arctan2(interp(np.sin(2 * theta)), interp(np.cos(2 * theta))), np.pi
+            0.5 * np.arctan2(interp(np.sin(2 * theta)), interp(np.cos(2 * theta))),
+            np.pi,
         )
         channels.append(
             Crossings(
@@ -154,7 +168,9 @@ def phase_candidates(
                 interp(result.amplitude[i]),
             )
         )
-    return PhaseCandidates(channels, distance, mono.dt_s, target_phase_rad, time_start_s)
+    return PhaseCandidates(
+        channels, distance, mono.dt_s, target_phase_rad, time_start_s
+    )
 
 
 def associate_cycles(
@@ -179,6 +195,8 @@ def associate_cycles(
         raise ValueError("Association target phase differs from candidate extraction")
     if not 0 <= seed_channel < len(candidates.channels):
         raise ValueError("seed_channel is outside the data")
+
+    # 1. Use explicit seed crossings or all crossings inside the requested time window.
     if seed_indices is None:
         if (
             time_window_s is None
@@ -198,10 +216,16 @@ def associate_cycles(
         or not len(seeds)
         or len(np.unique(seeds)) != len(seeds)
     ):
-        raise ValueError("seed_indices must be a nonempty set of unique integer indices")
-    if np.any(seeds < 0) or np.any(seeds >= len(candidates.channels[seed_channel].time_s)):
+        raise ValueError(
+            "seed_indices must be a nonempty set of unique integer indices"
+        )
+    if np.any(seeds < 0) or np.any(
+        seeds >= len(candidates.channels[seed_channel].time_s)
+    ):
         raise ValueError("Seed index outside candidate list")
     seeds = np.sort(seeds)
+
+    # 2. Initialise missing tracks; rejected or unvisited samples remain NaN.
     shape = (len(seeds), len(candidates.distance_m))
     arrays = [np.full(shape, np.nan) for _ in range(7)]
     tracks = PhaseTracks(
@@ -214,7 +238,14 @@ def associate_cycles(
         candidates.dt_s,
         candidates.time_start_s,
     )
-    names = ("time_s", "period_s", "slowness_s_per_m", "orientation_rad", "coherency", "amplitude")
+    names = (
+        "time_s",
+        "period_s",
+        "slowness_s_per_m",
+        "orientation_rad",
+        "coherency",
+        "amplitude",
+    )
 
     def accept(c: Crossings) -> np.ndarray:
         return (
@@ -230,6 +261,7 @@ def associate_cycles(
         tracks.candidate_index[j, i] = k
         tracks.correction_periods[j, i] = correction
 
+    # 3. Grow each admissible seed independently in both cable directions.
     for j, seed in enumerate(seeds):
         if not accept(candidates.channels[seed_channel])[seed]:
             continue
@@ -240,6 +272,7 @@ def associate_cycles(
             for i in range(seed_channel + direction, stop, direction):
                 c = candidates.channels[i]
                 ds = candidates.distance_m[i] - candidates.distance_m[last]
+                # Predict each candidate using the mean of its and the last accepted slowness.
                 predicted = (
                     tracks.time_s[j, last]
                     + 0.5 * (tracks.slowness_s_per_m[j, last] + c.slowness_s_per_m) * ds
@@ -247,21 +280,31 @@ def associate_cycles(
                 residual = c.time_s - predicted
                 period = np.minimum(c.period_s, tracks.period_s[j, last])
                 turn = 0.5 * np.abs(
-                    np.angle(np.exp(2j * (c.orientation_rad - tracks.orientation_rad[j, last])))
+                    np.angle(
+                        np.exp(
+                            2j * (c.orientation_rad - tracks.orientation_rad[j, last])
+                        )
+                    )
                 )
+                # Gate coherency and continuity BEFORE choosing the nearest candidate.
                 valid = (
                     accept(c)
-                    & (np.abs(residual) <= cfg.max_period_fraction * period + candidates.dt_s / 2)
+                    & (
+                        np.abs(residual)
+                        <= cfg.max_period_fraction * period + candidates.dt_s / 2
+                    )
                     & (turn <= np.deg2rad(cfg.max_orientation_change_degrees))
                 )
                 options = np.flatnonzero(valid)
                 if not len(options):
+                    # Bridge only short missing runs, without filling them or reseeding.
                     missing_distance += abs(
                         candidates.distance_m[i] - candidates.distance_m[i - direction]
                     )
                     if missing_distance > cfg.max_gap_m:
                         break
                     continue
+                # Rank surviving crossings by timing error as a fraction of the local period.
                 k = options[np.argmin(np.abs(residual[options]) / period[options])]
                 assign(j, i, k, residual[k] / period[k])
                 last, missing_distance = i, 0.0
@@ -287,12 +330,20 @@ def cycle_power(
     min_channels: int = 10,
 ) -> np.ndarray:
     """Median across channels of one-period mean squared strain; no direction ranking."""
-    if len(aperture_m) != 2 or not np.isfinite(aperture_m).all() or aperture_m[0] >= aperture_m[1]:
+    if (
+        len(aperture_m) != 2
+        or not np.isfinite(aperture_m).all()
+        or aperture_m[0] >= aperture_m[1]
+    ):
         raise ValueError("aperture_m must be an increasing finite pair")
     if not isinstance(min_channels, (int, np.integer)) or min_channels < 1:
         raise ValueError("min_channels must be a positive integer")
+
+    # 1. Measure original analysed strain power over one period around each tracked crossing.
     t = _track_time(result, tracks)
-    aperture = (tracks.distance_m >= aperture_m[0]) & (tracks.distance_m <= aperture_m[1])
+    aperture = (tracks.distance_m >= aperture_m[0]) & (
+        tracks.distance_m <= aperture_m[1]
+    )
     scores = np.full(len(tracks.time_s), np.nan)
     for j in range(len(scores)):
         powers = []
@@ -301,6 +352,7 @@ def cycle_power(
             if use.any():
                 u = result.monogenic.even[i, use].astype(float)
                 powers.append(np.mean(u * u))
+        # 2. Rank cycles by median channel power, requiring sufficient aperture support.
         if len(powers) >= min_channels:
             scores[j] = np.median(powers)
     return scores
@@ -316,9 +368,13 @@ def select_cycles(
         or not isinstance(count, (int, np.integer))
         or count < 1
     ):
-        raise ValueError("One score per cycle and a positive integer count are required")
+        raise ValueError(
+            "One score per cycle and a positive integer count are required"
+        )
+    # 1. Only cycles with a finite power score are eligible for selection.
     eligible = np.flatnonzero(np.isfinite(score))
     if consecutive:
+        # 2a. Rank groups of adjacent original seed crossings by their mean power.
         groups = [
             np.arange(i, i + count)
             for i in range(len(score) - count + 1)
@@ -329,9 +385,12 @@ def select_cycles(
             raise ValueError("No consecutive group with the requested count")
         ids = groups[int(np.argmax([np.mean(score[g]) for g in groups]))]
     else:
+        # 2b. Select the strongest individual cycles, then restore their time order.
         if len(eligible) < count:
             raise ValueError("Too few scored cycles for the requested count")
         ids = np.sort(eligible[np.argsort(-score[eligible], kind="stable")[:count]])
+
+    # 3. Copy selected tracks and scores without rerunning association.
     arrays = {
         f.name: getattr(tracks, f.name)[ids].copy()
         for f in fields(PhaseTracks)
@@ -364,13 +423,18 @@ def summarize_tracks(
         raise ValueError("Cycle summaries require tensor coherency; supply tensor=...")
     if not isinstance(min_cycles, (int, np.integer)) or min_cycles < 1:
         raise ValueError("min_cycles must be a positive integer")
+
+    # 1. Gate samples within each phase neighbourhood, then take within-cycle medians.
     t = _track_time(result, tracks)
     values = np.full_like(tracks.time_s, np.nan)
     coherencies = np.full_like(values, np.nan)
     sample_counts = np.zeros(values.shape, int)
     for j, i in zip(*np.where(np.isfinite(tracks.time_s))):
         use = (
-            (abs(t - tracks.time_s[j, i]) <= half_period_fraction * tracks.period_s[j, i])
+            (
+                abs(t - tracks.time_s[j, i])
+                <= half_period_fraction * tracks.period_s[j, i]
+            )
             & (result.coherency[i] >= coherency_min)
             & result.valid[i]
         )
@@ -378,6 +442,8 @@ def summarize_tracks(
             values[j, i] = np.median(result.slowness_s_per_m[i, use])
             coherencies[j, i] = np.median(result.coherency[i, use])
             sample_counts[j, i] = use.sum()
+
+    # 2. Exclude tracks sharing a crossing or reversing their relative temporal order.
     for i in range(values.shape[1]):
         roots = tracks.candidate_index[:, i]
         for root in np.unique(roots[roots >= 0]):
@@ -387,6 +453,8 @@ def summarize_tracks(
         for a, b in zip(valid[:-1], valid[1:]):
             if tracks.time_s[a, i] >= tracks.time_s[b, i]:
                 values[[a, b], i] = np.nan
+
+    # 3. Summarise across distinct cycles where min_cycles is met; quantiles describe spread.
     median, lower, upper = [np.full(values.shape[1], np.nan) for _ in range(3)]
     count = np.isfinite(values).sum(axis=0)
     coherencies[~np.isfinite(values)] = np.nan

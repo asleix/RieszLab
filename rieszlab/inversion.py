@@ -90,6 +90,8 @@ def fit_propagation(
     p = np.asarray(slowness_s_per_m, float)
     if tangent.ndim != 2 or tangent.shape[1] not in (2, 3) or p.shape != (len(tangent),):
         raise ValueError("Expected (channels,2/3) tangents and one slowness per channel")
+
+    # 1. Form horizontal cable projections without renormalising the 3-D unit tangents.
     design = tangent[:, :2]
     w = np.ones_like(p) if weights is None else np.asarray(weights, float)
     if w.shape != p.shape or not np.isfinite(w).all() or np.any(w < 0):
@@ -97,14 +99,19 @@ def fit_propagation(
     used = np.isfinite(design).all(axis=1) & np.isfinite(p) & (w > 0)
     if used.sum() < 3:
         raise ValueError("At least three finite observations with positive weights are required")
+
+    # 2. Weight residuals and check that the aperture resolves both horizontal components.
     a = design[used] * np.sqrt(w[used, None])
     b = p[used] * np.sqrt(w[used])
     condition = np.linalg.cond(a)
     if np.linalg.matrix_rank(a) < 2 or condition > cfg.max_condition_number:
         raise ValueError(f"Direction is not resolved by this aperture (condition={condition:.3g})")
+
+    # 3. Solve least squares; optionally use that solution to initialise the Huber fit.
     vector = np.linalg.lstsq(a, b, rcond=None)[0]
     if cfg.loss == "huber":
-        # Scale residuals to order one to avoid unit-dependent solver stopping.
+        # The Huber transition is at |sqrt(weight)*residual| = scale, in s/m.
+        # Scaling residuals also avoids unit-dependent solver stopping.
         scale = cfg.huber_scale_s_per_m
         solved = least_squares(
             lambda z: (a @ z - b) / scale,
@@ -117,6 +124,8 @@ def fit_propagation(
         if not solved.success:
             raise RuntimeError(f"Propagation fit did not converge: {solved.message}")
         vector = solved.x
+
+    # 4. Convert to clockwise-from-north bearings; incoming backazimuth reverses the vector.
     norm = np.linalg.norm(vector)
     azimuth = float(np.degrees(np.arctan2(vector[0], vector[1])) % 360) if norm > 0 else np.nan
     prediction = design @ vector
@@ -156,8 +165,12 @@ def bin_slowness(
         raise ValueError("Slowness/tangents must match distances")
     if not isinstance(min_points, (int, np.integer)) or min_points < 1:
         raise ValueError("min_points must be a positive integer")
+
+    # 1. Assign physical-distance bin IDs, preserving gaps for the later block bootstrap.
     ids = np.floor((s - bin_origin_m) / bin_width_m).astype(int)
     valid = np.isfinite(p) & np.isfinite(tangent).all(axis=1)
+
+    # 2. Pair median slowness with the mean tangent of the same accepted channels.
     rows = []
     for index in np.unique(ids):
         use = (ids == index) & valid
@@ -214,7 +227,11 @@ def bootstrap_direction(
         raise ValueError("min_bins must be an integer >=3")
     if len(s) < min_bins or np.any(np.diff(s) <= 0):
         raise ValueError(f"At least {min_bins} ordered bins required")
+
+    # 1. Fit the original bins once; each resample uses the same loss and settings.
     fit = fit_propagation(bins.tangent_en, bins.slowness_s_per_m, config=config)
+
+    # 2. Build overlapping blocks of contiguous bin IDs, never spanning missing-bin gaps.
     spacing = bins.bin_width_m
     count = max(1, int(round(block_length_m / spacing)))
     blocks = [
@@ -226,6 +243,8 @@ def bootstrap_direction(
         raise ValueError(
             "Too few contiguous blocks; shorten block_length_m or enlarge the aperture"
         )
+
+    # 3. Resample blocks with replacement, keeping each slowness/tangent pair together.
     rng = np.random.default_rng(seed)
     angles = []
     for _ in range(draws):
@@ -242,6 +261,8 @@ def bootstrap_direction(
             angles.append(trial.backazimuth_degrees)
     if len(angles) < max(2, int(np.ceil(draws * min_accepted_fraction))):
         raise ValueError(f"Only {len(angles)}/{draws} bootstrap fits were identifiable")
+
+    # 4. Centre angular differences on the fitted bearing before taking interval quantiles.
     angles = np.asarray(angles)
     delta = (angles - fit.backazimuth_degrees + 180) % 360 - 180
     tail = (1 - confidence) / 2

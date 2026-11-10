@@ -3,8 +3,7 @@
 Copyright (c) 2026 Aleix Seguí Ugalde.
 Affiliation: University of Oxford.
 Contact: aleix.seguiugalde@eng.ox.ac.uk
-Common-mode selection/subtraction follows Sergi Ventosa's
-rm_common_mode_noise2.c (2024); no channel normalisation is performed.
+Common-mode selection/subtraction inspired from Sergi Ventosa
 """
 
 from __future__ import annotations
@@ -62,7 +61,9 @@ def butterworth(
     # Double-precision filtering; return the input floating-point precision.
     working = x.astype(np.float64)
     working = working - working.mean(axis=1, keepdims=True) if demean else working
-    filtered = (signal.sosfiltfilt if zero_phase else signal.sosfilt)(sos, working, axis=1)
+    filtered = (signal.sosfiltfilt if zero_phase else signal.sosfilt)(
+        sos, working, axis=1
+    )
     return filtered.astype(x.dtype)
 
 
@@ -85,7 +86,11 @@ def remove_common_mode(
     x = _matrix(data)
     if estimator not in ("mean", "median"):
         raise ValueError("estimator must be mean or median")
-    selected = np.ones(len(x), bool) if channel_mask is None else np.asarray(channel_mask).copy()
+    selected = (
+        np.ones(len(x), bool)
+        if channel_mask is None
+        else np.asarray(channel_mask).copy()
+    )
     if selected.dtype != bool or selected.shape != (len(x),) or not selected.any():
         raise ValueError("channel_mask must be Boolean and select at least one channel")
     energy = np.einsum("ij,ij->i", x, x, dtype=np.float64) / x.shape[1]
@@ -109,7 +114,9 @@ def remove_common_mode(
     if adaptive:
         gains = (x @ template) / power if power > 0 else np.zeros(len(x))
     cleaned = (x - gains[:, None] * template).astype(x.dtype)
-    return CommonModeResult(cleaned, template, gains, selected, energy, float(threshold))
+    return CommonModeResult(
+        cleaned, template, gains, selected, energy, float(threshold)
+    )
 
 
 def interpolate_bad_channels(data: ArrayLike, bad_channels: ArrayLike) -> np.ndarray:
@@ -190,7 +197,12 @@ def ricker_time(
     if peak_frequency_hz >= 0.5 / dt_s:
         raise ValueError("Ricker peak must lie below temporal Nyquist")
     return _spectral_axis(
-        data, dt_s, 1, lambda f: _ricker_response(f, peak_frequency_hz), pad_samples, pad_mode
+        data,
+        dt_s,
+        1,
+        lambda f: _ricker_response(f, peak_frequency_hz),
+        pad_samples,
+        pad_mode,
     )
 
 
@@ -213,7 +225,12 @@ def ricker_space(
     if peak_wavelength_m <= 2 * dx_m:
         raise ValueError("Peak wavelength must exceed two channel spacings")
     return _spectral_axis(
-        data, dx_m, 0, lambda k: _ricker_response(k, 1 / peak_wavelength_m), pad_samples, pad_mode
+        data,
+        dx_m,
+        0,
+        lambda k: _ricker_response(k, 1 / peak_wavelength_m),
+        pad_samples,
+        pad_mode,
     )
 
 

@@ -86,14 +86,19 @@ class SteeredTensorConfig(TensorConfig):
         positive(dx_m, "dx_m")
         positive(dt_s, "dt_s")
         positive(reference_velocity_mps, "reference_velocity_mps")
+        # Orient the Gaussian along the prescribed moveout in the (s, c*t) plane.
         c = reference_velocity_mps
         along = np.array([1.0, c * self.slowness_s_per_m])
         along /= np.linalg.norm(along)
         normal = np.array([-along[1], along[0]])
         cov = self.sigma_parallel_m**2 * np.outer(along, along)
         cov += self.sigma_normal_m**2 * np.outer(normal, normal)
+
+        # Convert covariance from metres squared to sample coordinates.
         sampling = np.array([dx_m, c * dt_s])
         cov /= np.outer(sampling, sampling)
+
+        # Sample a centred, truncated Gaussian and normalise its averaging weights.
         radius = np.ceil(self.truncate * np.sqrt(np.diag(cov))).astype(int)
         s = np.arange(-radius[0], radius[0] + 1)[:, None]
         t = np.arange(-radius[1], radius[1] + 1)[None, :]
@@ -181,15 +186,20 @@ def structure_tensor(
     def smooth(x: np.ndarray) -> np.ndarray:
         return config.average(x, dx_m, dt_s, reference_velocity_mps)
 
+    # 1. Average outer products, not unit vectors: Riesz energy supplies the weights.
     jss, jst, jtt = smooth(a * a), smooth(a * b), smooth(b * b)
     # Remove tiny negative diagonal roundoff from FFT-based averaging.
     np.maximum(jss, 0, out=jss)
     np.maximum(jtt, 0, out=jtt)
+
+    # 2. Solve the symmetric 2x2 eigensystem; isotropic tensors have no defined direction.
     trace = jss + jtt
     contrast = np.minimum(np.hypot(jss - jtt, 2 * jst), trace)
     major, minor = (trace + contrast) / 2, (trace - contrast) / 2
     theta = np.mod(0.5 * np.arctan2(2 * jst, jss - jtt), np.pi)
     theta = np.where(contrast > 8 * np.finfo(theta.dtype).eps * trace, theta, np.nan)
+
+    # 3. Report both coherencies; tau changes neither eigenvalues nor orientation here.
     return TensorResult(
         jss,
         jst,

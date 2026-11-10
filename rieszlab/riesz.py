@@ -133,9 +133,18 @@ def _resolve_config(
     return replace(cfg, reference_velocity_mps=dx_m / dt_s if c is None else c)
 
 
-def _symbols(
+def _riesz_multipliers(
     shape: tuple[int, int], dx_m: float, dt_s: float, reference_velocity_mps: float, dtype: np.dtype
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Return the real factors in the Riesz Fourier multipliers, excluding -1j.
+
+    ms, mt = (k, f/c) / hypot(k, f/c), with k in cycles/m and f in Hz.
+    The forward responses are -1j*ms and -1j*mt; the factor -1j is not
+    included here. Analysis and synthesis reuse these same discrete factors.
+    Both are zero at DC; each component is zero on its own Nyquist axis
+    for even-sized grids, preserving the symmetry needed for real outputs.
+    """
+    # Put spatial and temporal frequencies in the same (s, c*t) metric.
     k = fft.fftfreq(shape[0], dx_m).astype(dtype)[:, None]
     y = fft.rfftfreq(shape[1], dt_s).astype(dtype)[None, :] / reference_velocity_mps
     radius = np.hypot(k, y)
@@ -158,22 +167,28 @@ def _monogenic_signal(
     """Analyse a finite (channel,time) matrix with one full padded FFT.
 
     c defaults to the supplied dx/dt; an explicit reference_velocity_mps
-    overrides this metric, not the sampling. Symbols are -i*(k,f/c)/hypot(k,f/c).
+    overrides this metric, not the sampling. Responses are -i*(k,f/c)/hypot(k,f/c).
     Amplitude is sqrt(u²+Rs²+Rt²); unsigned phase is atan2(hypot(Rs,Rt),u).
     No preprocessing, tensor averaging, normalisation or gating is performed.
     """
+    # 1. Validate sampling and pad the input before any Fourier analysis.
     cfg = _resolve_config(dx_m, dt_s, config, reference_velocity_mps)
     x = _matrix(data, cfg.dtype)
     ps, pt = cfg.pad_samples
-    # Analyse the full record; retain padding for consistent later reconstruction.
     u = np.pad(x, ((ps, ps), (pt, pt)), mode=cfg.pad_mode)
-    ms, mt = _symbols(u.shape, dx_m, dt_s, cfg.reference_velocity_mps, u.dtype)
+
+    # 2. Share one forward FFT between the two Riesz component responses.
+    ms, mt = _riesz_multipliers(u.shape, dx_m, dt_s, cfg.reference_velocity_mps, u.dtype)
     spectrum = fft.rfft2(u, workers=1)
     rs = fft.irfft2(-1j * ms * spectrum, s=u.shape, workers=1)
     rt = fft.irfft2(-1j * mt * spectrum, s=u.shape, workers=1)
+
+    # 3. Retain the padded fields for tensors/reconstruction; expose the input grid.
     crop = (slice(ps, ps + x.shape[0]), slice(pt, pt + x.shape[1]))
     domain = _AnalysisDomain(u, rs, rt, crop)
     u, rs, rt = (a[crop] for a in (u, rs, rt))
+
+    # 4. Compute pointwise amplitude, unsigned phase and axial orientation.
     q = np.hypot(rs, rt)
     amplitude = np.hypot(u, q)
     phase = np.where(amplitude > 0, np.arctan2(q, u), np.nan)
@@ -211,6 +226,7 @@ def _analyse_monogenic(mono: MonogenicResult, *, tensor: TensorConfig | None = N
     Otherwise averaging is performed before cropping the padded coefficients.
     Directional phase uses the normal with nonnegative temporal component.
     """
+    # Use the instantaneous direction, or average Riesz products on the padded grid.
     full, ten = None, None
     theta = mono.orientation_instantaneous
     if tensor is not None:
@@ -229,9 +245,12 @@ def _analyse_monogenic(mono: MonogenicResult, *, tensor: TensorConfig | None = N
         }
         ten = TensorResult(**values, config=tensor)
         theta = ten.orientation
+
+    # Convert direction to physical slowness; project the unsmoothed Riesz vector for phase.
     p = orientation_to_slowness(theta, mono.config.reference_velocity_mps)
     quadrature = np.cos(theta) * mono.riesz_space + np.sin(theta) * mono.riesz_time
     phase = np.arctan2(quadrature, mono.even)
+    # Numerical validity only: this is not a coherency or local-signal gate.
     valid = np.isfinite(p) & (mono.amplitude > 0)
     return RieszResult(mono, ten, p, phase, valid, full)
 
@@ -258,5 +277,5 @@ def monogenic(
     mono = _monogenic_signal(
         data, dx_m, dt_s, config=config, reference_velocity_mps=reference_velocity_mps
     )
-    # 2. Optionally average directions; 3. convert orientation to phase and slowness.
+    # 2. Optionally average directions, then derive signed phase and physical slowness.
     return _analyse_monogenic(mono, tensor=tensor)
