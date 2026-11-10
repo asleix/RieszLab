@@ -8,7 +8,7 @@ Contact: aleix.seguiugalde@eng.ox.ac.uk
 import numpy as np
 
 
-def demo_data():
+def demo_data() -> tuple[np.ndarray, float, float, np.ndarray, np.ndarray, np.ndarray]:
     dx, dt = 10.0, 0.01
     s, t = np.arange(240) * dx, np.arange(1600) * dt
     angle = np.deg2rad(30 + 45 * np.sin(2 * np.pi * s / 1800))

@@ -12,7 +12,7 @@ import numpy as np
 
 from rieszlab import GaussianTensorConfig, enhance_coherent, monogenic
 from rieszlab.preprocessing import butterworth, remove_common_mode, ricker_space
-from _demo import demo_data
+from synthetic_data import demo_data
 
 
 def main():

@@ -1,4 +1,4 @@
-"""Shared I/O and conditioning for the Alboran demonstrations, not library defaults.
+"""Shared CLI, input conditioning and file output for the Alboran examples.
 
 Copyright (c) 2026 Aleix Seguí Ugalde. University of Oxford.
 Contact: aleix.seguiugalde@eng.ox.ac.uk
@@ -10,10 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
-from rieszlab import GaussianTensorConfig, RieszConfig, RieszResult, monogenic
 from rieszlab.geometry import CableGeometry, cable_geometry
 from rieszlab.io import DASRecord, read_hdf5
-from rieszlab.plotting import PlotConfig
 from rieszlab.preprocessing import (
     butterworth,
     interpolate_bad_channels,
@@ -22,7 +20,7 @@ from rieszlab.preprocessing import (
 )
 
 
-def parser(description: str, *, gaussian_tensor: bool = True) -> ArgumentParser:
+def argument_parser(description: str, *, gaussian_tensor: bool = True) -> ArgumentParser:
     p = ArgumentParser(description=description)
     p.add_argument("--input", type=Path, required=True)
     p.add_argument("--output", type=Path, default=Path("example_output/alboran"))
@@ -46,7 +44,18 @@ def parser(description: str, *, gaussian_tensor: bool = True) -> ArgumentParser:
     return p
 
 
-def load(args: Namespace) -> DASRecord:
+def add_packet_arguments(parser: ArgumentParser) -> None:
+    parser.add_argument("--search-time", type=float, nargs=2, default=(98.0, 110.0))
+    parser.add_argument("--reference-m", type=float, default=23000.0)
+    parser.add_argument("--power-aperture-m", type=float, default=500.0)
+    parser.add_argument("--cycles", type=int, default=5)
+    parser.add_argument("--min-cycles", type=int, default=1)
+    parser.add_argument("--nonconsecutive", action="store_true")
+    parser.add_argument("--association-coherency", type=float, default=0.4)
+    parser.add_argument("--summary-coherency", type=float, default=0.7)
+
+
+def load_and_preprocess(args: Namespace) -> DASRecord:
     """Condition the complete file, repairing only explicitly identified channels."""
     record = read_hdf5(args.input, dx_m=args.dx_m, dt_s=args.dt_s, units="nanostrain")
     bad = np.zeros(len(record.data), bool)
@@ -74,21 +83,7 @@ def load(args: Namespace) -> DASRecord:
     return record
 
 
-def analyse(record: DASRecord, args: Namespace) -> RieszResult:
-    return monogenic(
-        record.data,
-        record.dx_m,
-        record.dt_s,
-        config=RieszConfig(reference_velocity_mps=args.metric_mps),
-        tensor=GaussianTensorConfig(args.sigma_space_m, args.sigma_time_s, tau=args.tau),
-    )
-
-
-def plot_config(args: Namespace) -> PlotConfig:
-    return PlotConfig(time_range_s=args.plot_time, distance_range_m=args.plot_distance_m)
-
-
-def save(fig, args: Namespace, name: str) -> None:
+def save_figure(fig, args: Namespace, name: str) -> None:
     import matplotlib.pyplot as plt
 
     args.output.mkdir(parents=True, exist_ok=True)

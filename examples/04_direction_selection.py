@@ -11,23 +11,23 @@ from rieszlab import (
     enhance_directional,
     monogenic,
 )
-from rieszlab.plotting import plot_direction_selection
-from _alboran import load, parser, plot_config, save
+from rieszlab.plotting import PlotConfig, plot_direction_selection
+from alboran_io import argument_parser, load_and_preprocess, save_figure
 
 
 def main() -> None:
-    p = parser(__doc__, gaussian_tensor=False)
+    p = argument_parser(__doc__, gaussian_tensor=False)
     p.add_argument("--slownesses-s-per-km", type=float, nargs=2, default=(-0.5, 0.5))
     p.add_argument("--sigma-parallel-m", type=float, default=300.0)
     p.add_argument("--sigma-normal-m", type=float, default=50.0)
     p.add_argument("--angular-sigma-degrees", type=float, default=10.0)
     p.set_defaults(plot_time=(90.0, 150.0), plot_distance_m=(10000.0, 50000.0))
     args = p.parse_args()
-    record = load(args)
+    record = load_and_preprocess(args)
     original = monogenic(
         record.data,
-        record.dx_m,
-        record.dt_s,
+        dx_m=record.dx_m,
+        dt_s=record.dt_s,
         config=RieszConfig(reference_velocity_mps=args.metric_mps),
     )
     outputs = []
@@ -47,12 +47,12 @@ def main() -> None:
     fig = plot_direction_selection(
         original,
         *outputs,
-        config=plot_config(args),
+        config=PlotConfig(time_range_s=args.plot_time, distance_range_m=args.plot_distance_m),
         units=record.units,
         time_start_s=record.time_start_s,
         distance_start_m=record.distance_start_m,
     )
-    save(fig, args, "04_direction_selection")
+    save_figure(fig, args, "04_direction_selection")
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ from rieszlab.association import (
 from rieszlab.geometry import GeometryConfig, adaptive_tensor_widths, cable_geometry
 from rieszlab.inversion import FitConfig, bin_slowness, bootstrap_direction
 from rieszlab.preprocessing import butterworth
-from _demo import demo_data
+from synthetic_data import demo_data
 
 
 def main():
