@@ -9,7 +9,7 @@ tracking and propagation analysis. The examples use distributed acoustic sensing
 The monogenic amplitude follows the packet, the phase resolves its oscillations, and the orientation
 gives the apparent slowness along the cable.
 
-For detailed explanation on the quantities and calculations, read [paper]. 
+For detailed explanation on the quantities and calculations, read the [paper](https://arxiv.org/abs/2611.29757)!. 
 
 Copyright 2026 Aleix Seguí Ugalde, University of Oxford.\
 Contact: aleix.seguiugalde@eng.ox.ac.uk
